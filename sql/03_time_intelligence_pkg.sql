@@ -1,122 +1,161 @@
 ------------------------------------------------------------------------------
--- Dynamic KPI Funnel Renderer
+-- Procedure: pr_resolve_timeframe_range
 --
 -- Purpose:
---   Renders a role-based KPI funnel as responsive HTML cards.
---   Designed for Oracle APEX Dynamic Content regions.
+--   Centralized timeframe resolution for Oracle APEX dashboards.
+--   Supports Day / Week / Month / Quarter / Year selection,
+--   automatic timeframe detection for manual date input,
+--   and semantic navigation (PREV / NEXT).
 --
--- Output:
---   HTML (CLOB)
+-- Usage:
+--   Call from an AFTER SUBMIT process.
+--   Pass page item names for timeframe + detail.
 --
--- Pattern:
---   Server-side KPI aggregation + HTML rendering
+-- Author:
+--   Reference implementation for analytics dashboards
 ------------------------------------------------------------------------------
-DECLARE
-    v_html         CLOB;
-    v_current_role VARCHAR2(50);
-    v_role_title   VARCHAR2(100);
+PROCEDURE pr_resolve_timeframe_range (
+    pi_timeframe_item_name        IN VARCHAR2,
+    pi_timeframe_detail_item_name IN VARCHAR2,
+    pi_request                    IN VARCHAR2,
+    pio_start_date                IN OUT VARCHAR2,
+    pio_end_date                  IN OUT VARCHAR2,
+    pio_timeframe                 IN OUT VARCHAR2,
+    pio_timeframe_detail          IN OUT VARCHAR2
+) IS
+    --------------------------------------------------------------------------
+    -- Base date context
+    --------------------------------------------------------------------------
+    v_today      DATE := TRUNC(SYSDATE);
+    v_year       NUMBER := TO_NUMBER(TO_CHAR(v_today,'YYYY'));
+    v_quarter    NUMBER := TO_NUMBER(TO_CHAR(v_today,'Q'));
+    v_month      NUMBER := TO_NUMBER(TO_CHAR(v_today,'MM'));
+    v_week       NUMBER := TO_NUMBER(TO_CHAR(v_today,'IW')); -- ISO week
+    v_weekday    NUMBER := (v_today - TRUNC(v_today,'IW')) + 1;
+
+    v_timeframe  VARCHAR2(20);
+    v_detail     VARCHAR2(50);
+
+    v_base_date  DATE;
+    v_dyear      NUMBER;
+    v_dweek      NUMBER;
 BEGIN
-    v_html := '<div class="status-grid-4">';
+    --------------------------------------------------------------------------
+    -- Load current session state
+    --------------------------------------------------------------------------
+    v_timeframe := apex_util.get_session_state(pi_timeframe_item_name);
+    v_detail    := apex_util.get_session_state(pi_timeframe_detail_item_name);
 
-    FOR r IN (
-        SELECT
-            role_name,
-            status_name,
-            status_icon,
-            cnt,
-            SUM(cnt) OVER (PARTITION BY role_name) AS role_total
-        FROM (
-            ------------------------------------------------------------------
-            -- Role 1: Appointment Maker
-            ------------------------------------------------------------------
-            SELECT
-                'Appointment Maker'      AS role_name,
-                s.status_name            AS status_name,
-                s.status_icon            AS status_icon,
-                COUNT(*)                 AS cnt
-            FROM customer c
-            JOIN lead l
-                ON l.lead_id = c.cust_lead_fk
-            JOIN status_lov s
-                ON s.status_id = l.appointment_status_id
-            WHERE c.order_date BETWEEN
-                  NVL(TO_DATE(:P_START_DATE,'DD.MM.YYYY'), c.order_date)
-              AND NVL(TO_DATE(:P_END_DATE,'DD.MM.YYYY')
-                      + INTERVAL '23:59:59' HOUR TO SECOND, c.order_date)
-            GROUP BY
-                s.status_name,
-                s.status_icon
+    --------------------------------------------------------------------------
+    -- MANUAL SEARCH (AUTO-DETECT MODE)
+    --------------------------------------------------------------------------
+    IF pi_request LIKE '%CUSTOM_SEARCH%' THEN
 
-            UNION ALL
-            ------------------------------------------------------------------
-            -- Role 2: Sales Person
-            ------------------------------------------------------------------
-            SELECT
-                'Sales Person',
-                s.status_name,
-                s.status_icon,
-                COUNT(*)
-            FROM customer c
-            JOIN lead l
-                ON l.lead_id = c.cust_lead_fk
-            JOIN status_lov s
-                ON s.status_id = l.sales_status_id
-            WHERE c.order_date BETWEEN
-                  NVL(TO_DATE(:P_START_DATE,'DD.MM.YYYY'), c.order_date)
-              AND NVL(TO_DATE(:P_END_DATE,'DD.MM.YYYY')
-                      + INTERVAL '23:59:59' HOUR TO SECOND, c.order_date)
-            GROUP BY
-                s.status_name,
-                s.status_icon
-        )
-        ORDER BY
-            CASE role_name
-                WHEN 'Appointment Maker' THEN 1
-                WHEN 'Sales Person'      THEN 2
-            END,
-            cnt DESC
-    ) LOOP
+        DECLARE
+            v_start DATE := TO_DATE(pio_start_date,'DD.MM.YYYY');
+            v_end   DATE := TO_DATE(pio_end_date,'DD.MM.YYYY');
+            v_diff  NUMBER := v_end - v_start;
+        BEGIN
+            IF v_diff = 0 THEN
+                pio_timeframe        := 'D';
+                pio_timeframe_detail := TO_CHAR(v_start,'D');
 
-        ----------------------------------------------------------------------
-        -- New role → open new KPI card
-        ----------------------------------------------------------------------
-        IF v_current_role IS NULL OR v_current_role <> r.role_name THEN
+            ELSIF v_diff <= 7 THEN
+                pio_timeframe        := 'W';
+                pio_timeframe_detail := TO_CHAR(v_start,'YYYY') || '-' || TO_CHAR(v_start,'IW');
 
-            IF v_current_role IS NOT NULL THEN
-                v_html := v_html || '</div>';
+            ELSIF v_diff <= 31 THEN
+                pio_timeframe        := 'M';
+                pio_timeframe_detail := TO_CHAR(v_start,'MM');
+
+            ELSIF v_diff <= 92 THEN
+                pio_timeframe        := 'Q';
+                pio_timeframe_detail := TO_CHAR(v_start,'YYYY') || '-' || TO_CHAR(v_start,'Q');
+
+            ELSE
+                pio_timeframe        := 'Y';
+                pio_timeframe_detail := TO_CHAR(v_start,'YYYY');
             END IF;
 
-            v_role_title :=
-                CASE r.role_name
-                    WHEN 'Appointment Maker' THEN '1. Appointment Maker'
-                    WHEN 'Sales Person'      THEN '2. Sales Person'
-                END;
+            apex_util.set_session_state(pi_timeframe_item_name,        pio_timeframe);
+            apex_util.set_session_state(pi_timeframe_detail_item_name, pio_timeframe_detail);
+        END;
 
-            v_html :=
-                v_html ||
-                '<div class="status-box">' ||
-                    '<div class="status-title">' ||
-                        v_role_title ||
-                        ' <span class="status-total">(' ||
-                        r.role_total || ')</span>' ||
-                    '</div>';
+        RETURN;
+    END IF;
 
-            v_current_role := r.role_name;
-        END IF;
+    --------------------------------------------------------------------------
+    -- MAIN TIMEFRAME SELECTED
+    --------------------------------------------------------------------------
+    IF pi_request = pi_timeframe_item_name THEN
+        CASE v_timeframe
+            WHEN 'D' THEN
+                pio_start_date := TO_CHAR(v_today,'DD.MM.YYYY');
+                pio_end_date   := pio_start_date;
+                pio_timeframe_detail := v_weekday;
 
-        ----------------------------------------------------------------------
-        -- Status row
-        ----------------------------------------------------------------------
-        v_html :=
-            v_html ||
-            '<div class="status-row">' ||
-                '<span>' || r.status_icon || ' ' || r.status_name || '</span>' ||
-                '<span class="status-count">' || r.cnt || '</span>' ||
-            '</div>';
+            WHEN 'W' THEN
+                pio_start_date := TO_CHAR(TRUNC(v_today,'IW'),'DD.MM.YYYY');
+                pio_end_date   := TO_CHAR(v_today,'DD.MM.YYYY');
+                pio_timeframe_detail := v_year || '-' || LPAD(v_week,2,'0');
 
-    END LOOP;
+            WHEN 'M' THEN
+                pio_start_date := TO_CHAR(TRUNC(v_today,'MM'),'DD.MM.YYYY');
+                pio_end_date   := TO_CHAR(LAST_DAY(v_today),'DD.MM.YYYY');
+                pio_timeframe_detail := LPAD(v_month,2,'0');
 
-    v_html := v_html || '</div></div>';
+            WHEN 'Q' THEN
+                CASE v_quarter
+                    WHEN 1 THEN pio_start_date := '01.01.'||v_year; pio_end_date := '31.03.'||v_year;
+                    WHEN 2 THEN pio_start_date := '01.04.'||v_year; pio_end_date := '30.06.'||v_year;
+                    WHEN 3 THEN pio_start_date := '01.07.'||v_year; pio_end_date := '30.09.'||v_year;
+                    WHEN 4 THEN pio_start_date := '01.10.'||v_year; pio_end_date := '31.12.'||v_year;
+                END CASE;
+                pio_timeframe_detail := v_year||'-'||v_quarter;
 
-    RETURN v_html;
-END;
+            WHEN 'Y' THEN
+                pio_start_date := '01.01.'||v_year;
+                pio_end_date   := '31.12.'||v_year;
+                pio_timeframe_detail := v_year;
+        END CASE;
+
+        apex_util.set_session_state(pi_timeframe_detail_item_name, pio_timeframe_detail);
+        RETURN;
+    END IF;
+
+    --------------------------------------------------------------------------
+    -- DETAIL NAVIGATION (PREV / NEXT)
+    --------------------------------------------------------------------------
+    IF pi_request = pi_timeframe_detail_item_name THEN
+
+        v_base_date := TO_DATE(pio_start_date,'DD.MM.YYYY');
+
+        CASE v_timeframe
+            WHEN 'M' THEN
+                IF v_detail = 'PREV_MONTH' THEN
+                    v_base_date := ADD_MONTHS(v_base_date,-1);
+                ELSIF v_detail = 'NEXT_MONTH' THEN
+                    v_base_date := ADD_MONTHS(v_base_date, 1);
+                END IF;
+
+                pio_start_date := TO_CHAR(TRUNC(v_base_date,'MM'),'DD.MM.YYYY');
+                pio_end_date   := TO_CHAR(LAST_DAY(v_base_date),'DD.MM.YYYY');
+                pio_timeframe_detail := TO_CHAR(v_base_date,'MM');
+
+            WHEN 'Y' THEN
+                IF v_detail = 'PREV_YEAR' THEN
+                    v_dyear := TO_NUMBER(TO_CHAR(v_base_date,'YYYY')) - 1;
+                ELSIF v_detail = 'NEXT_YEAR' THEN
+                    v_dyear := TO_NUMBER(TO_CHAR(v_base_date,'YYYY')) + 1;
+                ELSE
+                    v_dyear := TO_NUMBER(v_detail);
+                END IF;
+
+                pio_start_date := '01.01.'||v_dyear;
+                pio_end_date   := '31.12.'||v_dyear;
+                pio_timeframe_detail := v_dyear;
+        END CASE;
+
+        RETURN;
+    END IF;
+END pr_resolve_timeframe_range;
