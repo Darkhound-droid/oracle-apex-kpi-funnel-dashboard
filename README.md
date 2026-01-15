@@ -3,7 +3,7 @@
 KPI-driven Lead-to-Customer Conversion Dashboard built with Oracle APEX.
 
 ## What this repo contains
-![Dashboard Preview](Screenshots/dashboard.png)
+![Dashboard Preview](Screenshots/Dashboard.png)
 /apex
 - Page 1410 export (Customer Created KPI Funnel Dashboard)
 
