@@ -1,0 +1,17 @@
+# Oracle APEX exports
+*.sql.bak
+*.fmb
+*.fmx
+*.rdf
+
+# SQL Developer / IDE files
+*.log
+*.tmp
+*.swp
+*.swo
+*.orig
+*.rej
+
+# OS files
+.DS_Store
+Thumbs.db

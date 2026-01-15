@@ -1,0 +1,3 @@
+-- Views for reporting and KPI aggregation.
+-- Add canonical SELECTs that power the KPI regions and the report.
+-- Keep logic in views to make APEX regions simple and consistent.
