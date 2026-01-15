@@ -1,1 +1,17 @@
 
+## Sample data (minimal, readable)
+INSERT INTO STATUS_LOV VALUES (1, 'New',        '🟢', 'NO');
+INSERT INTO STATUS_LOV VALUES (2, 'In Progress','🟡', 'NO');
+INSERT INTO STATUS_LOV VALUES (3, 'Completed',  '✅', 'NO');
+INSERT INTO STATUS_LOV VALUES (4, 'Canceled',   '❌', 'NO');
+
+INSERT INTO LEAD VALUES (1001, 1, 2);
+INSERT INTO LEAD VALUES (1002, 2, 3);
+
+INSERT INTO CUSTOMER VALUES
+(2001, 'John', 'Doe', 1001, SYSDATE-3, 2, 3, 'NO');
+
+INSERT INTO CUSTOMER VALUES
+(2002, 'Jane', 'Smith', 1002, SYSDATE-10, 3, 3, 'NO');
+
+COMMIT;
