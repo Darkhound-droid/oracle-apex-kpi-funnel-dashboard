@@ -1,6 +1,6 @@
 # Time Intelligence
 
-## How `pr_resolve_timeframe_range` works
+## How `kpi_time_intelligence.pr_resolve_timeframe_range` works
 
 The package procedure resolves start and end dates based on a selected timeframe and optional navigation actions. It reads APEX session state for the selected timeframe and detail values, then calculates the appropriate date range and writes the results back to session state for downstream regions to consume.
 
