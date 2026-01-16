@@ -6,7 +6,7 @@ This folder contains the database objects that support the KPI funnel dashboard.
 
 1. `01_tables.sql` creates the core tables and foreign keys for leads, customers, and status lookups.
 2. `02_sample_data.sql` inserts minimal sample rows so the dashboard renders without additional data entry.
-3. `03_views.sql` is the place to define reporting and KPI views that APEX regions can query directly.
+3. `03_views.sql` defines reporting/KPI views plus the helper function that renders KPI HTML for the dynamic content region.
 4. `04_time_intelligence_pkg.sql` defines the centralized timeframe package used by the dashboard to resolve date ranges consistently.
 
 ## Required execution order
